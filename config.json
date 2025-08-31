@@ -1,4 +1,6 @@
 {
     "codec": "H.264 (CPU libx264)",
-    "resolution": "1080p"
+    "resolution": "1080p",
+    "language": "id",
+    "geometry": "560x800+693+174"
 }
