@@ -22,20 +22,17 @@ translations: Dict[str, str] = {
 
 stop_event = threading.Event()
 
-# === Helper untuk CTkTextbox insert ===
-def safe_insert(widget, text, tag=None):
-    widget.configure(state="normal")
-    widget.insert("end", text)
-    widget.see("end")
-    widget.configure(state="disabled")
-
 # === Helper: test encoder works ===
 def encoder_is_usable(ffmpeg_path: str, encoder: str) -> bool:
+    """Test if an encoder actually works on this system"""
     try:
         test_cmd = [
-            ffmpeg_path, "-hide_banner", "-loglevel", "error",
-            "-f", "lavfi", "-i", "testsrc2", "-t", "1",
-            "-c:v", encoder, "-f", "null", "-"
+            ffmpeg_path,
+            "-hide_banner", "-loglevel", "error",
+            "-f", "lavfi", "-i", "testsrc2",
+            "-t", "1",
+            "-c:v", encoder,
+            "-f", "null", "-"
         ]
         result = subprocess.run(test_cmd, capture_output=True, text=True)
         return result.returncode == 0
@@ -44,21 +41,26 @@ def encoder_is_usable(ffmpeg_path: str, encoder: str) -> bool:
 
 # === Detect available codecs ===
 def detect_available_codecs(ffmpeg_path: str) -> Dict[str, list]:
+    """Detect encoders supported and usable by ffmpeg on this system"""
     codec_map = {
         "H.264 (CPU libx264)": ['-c:v','libx264','-preset','medium'],
 
+        # AMD AMF → stabil dengan quality + pix_fmt
         "H.264 (AMD AMF)": ['-c:v','h264_amf','-quality','balanced','-pix_fmt','yuv420p'],
         "H.265 (AMD AMF)": ['-c:v','hevc_amf','-quality','balanced','-pix_fmt','yuv420p'],
 
+        # NVIDIA
         "H.264 (NVIDIA NVENC)": ['-c:v','h264_nvenc','-preset','p4'],
         "H.265 (NVIDIA NVENC)": ['-c:v','hevc_nvenc','-preset','p4'],
 
+        # Intel QSV
         "H.264 (Intel QSV)": ['-c:v','h264_qsv'],
         "H.265 (Intel QSV)": ['-c:v','hevc_qsv'],
 
         "H.265 (CPU libx265)": ['-c:v','libx265','-crf','28','-preset','medium'],
         "VP9 (CPU libvpx-vp9)": ['-c:v','libvpx-vp9','-b:v','2M'],
 
+        # Audio
         "MP3 (Audio Only)": None,
         "AAC (Audio Only)": None,
         "Opus (Audio Only)": None
@@ -72,6 +74,7 @@ def detect_available_codecs(ffmpeg_path: str) -> Dict[str, list]:
             encoder_name = args[1]
             if encoder_is_usable(ffmpeg_path, encoder_name):
                 available_codecs[name] = args
+
     return available_codecs
 
 # === Logger ===
@@ -96,8 +99,9 @@ class TkinterLogger:
         if msg.strip():
             timestamp = datetime.now().strftime("[%H:%M:%S] ")
             clean_msg = re.sub(r"\x1B\[[0-9;]*[a-zA-Z]", "", msg)
-
-            safe_insert(self.log_widget, timestamp + clean_msg + "\n", tag)
+            self.log_widget.insert("end", timestamp + clean_msg + "\n", tag)
+            self.log_widget.see("end")
+            self.log_widget.update_idletasks()
 
             if "Downloading webpage" in msg or "Extracting" in msg:
                 self.progress_bar.configure(mode="determinate")
@@ -167,8 +171,6 @@ def download_videos(urls: List[str], codec_choice: str, res_choice: str,
         'ignoreerrors': True,
         'ffmpeg_location': FFMPEG_PATH,
         'logger': TkinterLogger(log_widget, prog_label, speed_label, progress_bar, phase_label),
-        'progress': True,
-        'verbose': True
     }
     if postprocessor_args:
         ydl_opts['postprocessor_args'] = postprocessor_args
@@ -178,25 +180,26 @@ def download_videos(urls: List[str], codec_choice: str, res_choice: str,
             ydl.download(urls)
 
         if stop_event.is_set():
-            safe_insert(log_widget, translations["canceled"] + "\n")
+            log_widget.insert("end", translations["canceled"] + "\n")
             phase_label.configure(text=translations["canceled"])
             prog_label.configure(text=f"{translations['progress']}")
             progress_bar.set(0.0)
         else:
-            safe_insert(log_widget, translations["done"] + "\n")
+            log_widget.insert("end", translations["done"] + "\n")
             progress_bar.set(1.0)
             phase_label.configure(text=translations["phase_done"])
             prog_label.configure(text=f"{translations['progress']} (100%)")
 
     except Exception as e:
+        # === Fallback kalau AMF gagal ===
         if "amf" in codec_choice.lower():
-            safe_insert(log_widget, "⚠️ AMF encode failed, falling back to CPU (libx264)\n")
+            log_widget.insert("end", "⚠️ AMF encode failed, falling back to CPU (libx264)\n")
             codec_choice = "H.264 (CPU libx264)"
             return download_videos(urls, codec_choice, res_choice,
                                    log_widget, prog_label, speed_label,
                                    download_btn, progress_bar, phase_label)
         else:
-            safe_insert(log_widget, translations["error"] + f": {e}\n")
+            log_widget.insert("end", translations["error"] + f": {e}\n")
             messagebox.showerror(translations["error"], str(e))
     finally:
         download_btn.configure(text="⬇️ Download")
