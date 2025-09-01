@@ -1,5 +1,5 @@
-import tkinter as tk
-from tkinter import messagebox, scrolledtext, ttk
+import customtkinter as ctk
+from tkinter import messagebox
 import threading, os, platform, subprocess, sys, json, re
 from yt_dlp import YoutubeDL
 
@@ -18,7 +18,11 @@ translations = {
         "error": "❌ Error",
         "warn_url": "Masukkan minimal 1 URL YouTube",
         "warning": "Peringatan",
-        "lang_label": "🌐 Pilih Bahasa"
+        "lang_label": "🌐 Pilih Bahasa",
+        "phase_prepare": "🔍 Menyiapkan...",
+        "phase_download": "⬇️ Mengunduh...",
+        "phase_post": "🛠️ Memproses...",
+        "phase_done": "✅ Selesai!"
     },
     "en": {
         "title": "🎬 YouTube Downloader",
@@ -33,7 +37,11 @@ translations = {
         "error": "❌ Error",
         "warn_url": "Please enter at least 1 YouTube URL",
         "warning": "Warning",
-        "lang_label": "🌐 Select Language"
+        "lang_label": "🌐 Select Language",
+        "phase_prepare": "🔍 Preparing...",
+        "phase_download": "⬇️ Downloading...",
+        "phase_post": "🛠️ Processing...",
+        "phase_done": "✅ Done!"
     }
 }
 current_lang = "id"
@@ -79,41 +87,63 @@ def open_folder(path):
 
 # === Logger ===
 class TkinterLogger:
-    def __init__(self, log_widget, percent_label, speed_label):
+    def __init__(self, log_widget, percent_label, speed_label, progress_bar, phase_label):
         self.log_widget = log_widget
         self.percent_label = percent_label
         self.speed_label = speed_label
+        self.progress_bar = progress_bar
+        self.phase_label = phase_label
         self.progress_pattern = re.compile(r"(\d{1,3}\.?\d*)%")
         self.speed_pattern = re.compile(r"at ([0-9\.]+[KMG]iB/s)")
 
     def debug(self, msg): self._log(msg)
-    def warning(self, msg): self._log(f"⚠️ {msg}", "orange")
-    def error(self, msg): self._log(f"❌ {msg}", "red")
+    def warning(self, msg): self._log(f"⚠️ {msg}")
+    def error(self, msg): self._log(f"❌ {msg}")
 
-    def _log(self, msg, color="white"):
+    def _log(self, msg):
         if msg.strip():
             clean_msg = re.sub(r"\x1B\[[0-9;]*[a-zA-Z]", "", msg)
-            self.log_widget.insert(tk.END, clean_msg + "\n", color)
-            self.log_widget.see(tk.END)
+            self.log_widget.insert("end", clean_msg + "\n")
+            self.log_widget.see("end")
             self.log_widget.update_idletasks()
+
+            # Stage 1: Preparing
+            if "Downloading webpage" in msg or "Extracting" in msg:
+                self.progress_bar.configure(mode="determinate")
+                self.progress_bar.set(0.05)
+                self.phase_label.configure(text=translations[current_lang]["phase_prepare"])
+
+            # Stage 2: Downloading (map % to 10–90%)
             match = self.progress_pattern.search(msg)
             if match:
                 try:
-                    val = float(match.group(1))
-                    self.percent_label.config(text=f" ({val:.1f}%)")
+                    val = float(match.group(1))  # 0–100
+                    mapped = 0.1 + (val / 100.0) * 0.8
+                    self.progress_bar.configure(mode="determinate")
+                    self.progress_bar.set(mapped)
+                    self.percent_label.configure(text=f" ({val:.1f}%)")
+                    self.phase_label.configure(text=translations[current_lang]["phase_download"])
                 except:
                     pass
+
+            # Stage 3: Post-processing
+            if any(word in msg for word in ["Merging", "Post-process", "Converting", "Extracting audio"]):
+                self.progress_bar.configure(mode="determinate")
+                self.progress_bar.set(0.95)
+                self.phase_label.configure(text=translations[current_lang]["phase_post"])
+
+            # Speed
             smatch = self.speed_pattern.search(msg)
             if smatch:
-                self.speed_label.config(text=f"⚡ {smatch.group(1)}")
+                self.speed_label.configure(text=f"⚡ {smatch.group(1)}")
 
 # === Downloader ===
 def download_videos(urls, codec_choice, res_choice,
-                    log_widget, percent_label, speed_label, download_btn):
-    def log(msg, color="white"):
+                    log_widget, percent_label, speed_label, download_btn, progress_bar, phase_label):
+    def log(msg):
         clean_msg = re.sub(r"\x1B\[[0-9;]*[a-zA-Z]", "", msg)
-        log_widget.insert(tk.END, clean_msg + "\n", color)
-        log_widget.see(tk.END)
+        log_widget.insert("end", clean_msg + "\n")
+        log_widget.see("end")
         log_widget.update_idletasks()
 
     res_map = {
@@ -158,7 +188,7 @@ def download_videos(urls, codec_choice, res_choice,
         'noplaylist': False,
         'ignoreerrors': True,
         'ffmpeg_location': FFMPEG_PATH,
-        'logger': TkinterLogger(log_widget, percent_label, speed_label),
+        'logger': TkinterLogger(log_widget, percent_label, speed_label, progress_bar, phase_label),
     }
     if postprocessor_args:
         ydl_opts['postprocessor_args']=postprocessor_args
@@ -166,16 +196,18 @@ def download_videos(urls, codec_choice, res_choice,
     try:
         with YoutubeDL(ydl_opts) as ydl:
             ydl.download(urls)
-        log(translations[current_lang]["done"], "green")
+        log(translations[current_lang]["done"])
+        progress_bar.set(1.0)
+        phase_label.configure(text=translations[current_lang]["phase_done"])
     except Exception as e:
-        log(translations[current_lang]["error"] + f": {e}", "red")
+        log(translations[current_lang]["error"] + f": {e}")
     finally:
-        download_btn.config(state="normal", text=translations[current_lang]["download"])
-        percent_label.config(text="")
+        download_btn.configure(state="normal", text=translations[current_lang]["download"])
+        percent_label.configure(text="")
 
 def start_download(url_text, codec_choice_var, res_choice_var,
-                   log_widget, percent_label, speed_label, download_btn):
-    urls = [u.strip() for u in url_text.get("1.0", tk.END).splitlines() if u.strip()]
+                   log_widget, percent_label, speed_label, download_btn, progress_bar, phase_label):
+    urls = [u.strip() for u in url_text.get("1.0", "end").splitlines() if u.strip()]
     if not urls:
         messagebox.showwarning(translations[current_lang]["warning"],
                                translations[current_lang]["warn_url"])
@@ -187,16 +219,19 @@ def start_download(url_text, codec_choice_var, res_choice_var,
         "language": current_lang
     })
 
-    log_widget.delete("1.0", tk.END)
-    log_widget.insert(tk.END, translations[current_lang]["start_download"] + "\n", "white")
-    percent_label.config(text="")
-    speed_label.config(text="")
+    log_widget.delete("1.0", "end")
+    log_widget.insert("end", translations[current_lang]["start_download"] + "\n")
+    percent_label.configure(text="")
+    speed_label.configure(text="")
+    progress_bar.configure(mode="determinate")
+    progress_bar.set(0.0)
+    phase_label.configure(text=translations[current_lang]["phase_prepare"])
 
-    download_btn.config(state="disabled", text="⏳ Downloading...")
+    download_btn.configure(state="disabled", text="⏳ Downloading...")
 
     t = threading.Thread(target=download_videos,
         args=(urls, codec_choice_var.get(), res_choice_var.get(),
-              log_widget, percent_label, speed_label, download_btn))
+              log_widget, percent_label, speed_label, download_btn, progress_bar, phase_label))
     t.start()
 
 # === Main UI ===
@@ -205,155 +240,102 @@ def main():
     config = load_config()
     current_lang = config.get("language", "id")
 
-    root = tk.Tk()
+    ctk.set_appearance_mode("dark")
+    ctk.set_default_color_theme("blue")
+
+    root = ctk.CTk()
     root.title(translations[current_lang]["title"])
-    root.geometry(config.get("geometry", "560x800"))
-    root.configure(bg="#1e1e1e")
+    root.geometry(config.get("geometry", "600x750"))
 
     # === Language Selector ===
-    lang_frame = tk.Frame(root, bg="#1e1e1e")
-    lang_frame.grid(row=0, column=0, sticky="ew", padx=20, pady=6)
+    lang_frame = ctk.CTkFrame(root, fg_color="transparent")
+    lang_frame.pack(fill="x", padx=20, pady=6)
 
-    lang_label = tk.Label(lang_frame, text=translations[current_lang]["lang_label"],
-                          bg="#1e1e1e", fg="white", font=("Segoe UI", 10, "bold"))
+    lang_label = ctk.CTkLabel(lang_frame, text=translations[current_lang]["lang_label"])
     lang_label.pack(side="left", padx=5)
 
-    lang_var = tk.StringVar(value=current_lang)
-    lang_dropdown = ttk.Combobox(
-        lang_frame, textvariable=lang_var,
-        values=["id", "en"], state="readonly",
-        font=("Segoe UI", 10), style="Modern.TCombobox"
+    lang_var = ctk.StringVar(value=current_lang)
+    lang_dropdown = ctk.CTkComboBox(
+        lang_frame, variable=lang_var, values=["id", "en"],
+        command=lambda _: switch_language()
     )
     lang_dropdown.pack(side="left", padx=5)
 
-    # === Styles ===
-    style = ttk.Style(root)
-    style.theme_use("clam")
-    accent = "#2196f3"
-    style.configure("Rounded.TButton", background=accent, foreground="white",
-                    padding=10, relief="flat", font=("Segoe UI", 11, "bold"))
-    style.map("Rounded.TButton",
-              background=[("active", "#1976d2"), ("disabled", accent)],
-              foreground=[("disabled", "white"), ("active", "white"), ("!disabled", "white")])
-
-    style.configure("Modern.TCombobox",
-        fieldbackground="#2c2c2c", foreground="white",
-        background="#2c2c2c", arrowsize=16, padding=6)
-    style.map("Modern.TCombobox",
-        fieldbackground=[("readonly", "#2c2c2c"), ("focus", "#2c2c2c")],
-        foreground=[("disabled", "#777"), ("!disabled", "white")],
-        selectbackground=[("!disabled", "#37474f")],
-        selectforeground=[("!disabled", accent)],
-        arrowcolor=[("disabled", "#777"), ("!disabled", accent)])
-
-    root.option_add('*Listbox.background', '#2c2c2c')
-    root.option_add('*Listbox.foreground', 'white')
-    root.option_add('*Listbox.selectBackground', '#37474f')
-    root.option_add('*Listbox.selectForeground', accent)
-
-    def make_labelframe(master, text):
-        frame = tk.LabelFrame(master, text=text, bg="#2b2b2b",
-                              font=("Segoe UI", 11, "bold"), fg="white",
-                              bd=0, relief="flat", labelanchor="nw")
-        frame.config(highlightbackground="#444", highlightcolor=accent, highlightthickness=1)
-        return frame
-
-    root.grid_columnconfigure(0, weight=1)
-
     # === URL Input ===
-    url_frame = make_labelframe(root, translations[current_lang]["url_label"])
-    url_frame.grid(row=1, column=0, sticky="ew", padx=20, pady=10)
-    url_text = scrolledtext.ScrolledText(url_frame, height=5, font=("Segoe UI", 10),
-                                         bd=0, relief="flat", bg="#1e1e1e", fg="white")
-    url_text.pack(fill="both", expand=True, padx=10, pady=8)
+    url_label = ctk.CTkLabel(root, text=translations[current_lang]["url_label"])
+    url_label.pack(anchor="w", padx=20, pady=(10,2))
 
-    # Context menu copy/paste
-    menu = tk.Menu(url_text, tearoff=0, bg="#2c2c2c", fg="white")
-    menu.add_command(label="Copy", command=lambda: url_text.event_generate("<<Copy>>"))
-    menu.add_command(label="Paste", command=lambda: url_text.event_generate("<<Paste>>"))
-    url_text.bind("<Button-3>", lambda e: menu.tk_popup(e.x_root, e.y_root))
+    url_text = ctk.CTkTextbox(root, height=100)
+    url_text.pack(fill="x", padx=20, pady=5)
 
     # === Codec Selection ===
-    codec_frame = make_labelframe(root, translations[current_lang]["format_label"])
-    codec_frame.grid(row=2, column=0, sticky="ew", padx=20, pady=6)
-    codec_choice_var = tk.StringVar(value=config.get("codec", "H.264 (CPU libx264)"))
-    codec_dropdown = ttk.Combobox(codec_frame, textvariable=codec_choice_var,
-                                  state="readonly", font=("Segoe UI", 10),
-                                  style="Modern.TCombobox")
-    codec_dropdown['values'] = [
+    codec_label = ctk.CTkLabel(root, text=translations[current_lang]["format_label"])
+    codec_label.pack(anchor="w", padx=20, pady=(10,2))
+
+    codec_choice_var = ctk.StringVar(value=config.get("codec", "H.264 (CPU libx264)"))
+    codec_dropdown = ctk.CTkComboBox(root, variable=codec_choice_var, values=[
         "H.264 (CPU libx264)", "H.264 (NVIDIA NVENC)", "H.264 (AMD AMF)", "H.264 (Intel QSV)",
         "H.265 (CPU libx265)", "H.265 (NVIDIA NVENC)", "H.265 (AMD AMF)", "H.265 (Intel QSV)",
         "VP9 (CPU libvpx-vp9)", "MP3 (Audio Only)", "AAC (Audio Only)", "Opus (Audio Only)"
-    ]
-    codec_dropdown.pack(fill="x", padx=12, pady=8)
+    ])
+    codec_dropdown.pack(fill="x", padx=20, pady=5)
 
     # === Resolution Selection ===
-    res_frame = make_labelframe(root, translations[current_lang]["res_label"])
-    res_frame.grid(row=3, column=0, sticky="ew", padx=20, pady=6)
-    res_choice_var = tk.StringVar(value=config.get("resolution", "1080p"))
-    res_dropdown = ttk.Combobox(res_frame, textvariable=res_choice_var,
-                                state="readonly", font=("Segoe UI", 10),
-                                style="Modern.TCombobox")
-    res_dropdown['values'] = ["144p", "240p", "360p", "480p", "720p",
-                              "1080p", "1440p (2K)", "2160p (4K)", "4320p (8K)"]
-    res_dropdown.pack(fill="x", padx=12, pady=8)
+    res_label = ctk.CTkLabel(root, text=translations[current_lang]["res_label"])
+    res_label.pack(anchor="w", padx=20, pady=(10,2))
+
+    res_choice_var = ctk.StringVar(value=config.get("resolution", "1080p"))
+    res_dropdown = ctk.CTkComboBox(root, variable=res_choice_var, values=[
+        "144p","240p","360p","480p","720p","1080p","1440p (2K)","2160p (4K)","4320p (8K)"
+    ])
+    res_dropdown.pack(fill="x", padx=20, pady=5)
 
     # === Buttons ===
-    btn_frame = tk.Frame(root, bg="#1e1e1e")
-    btn_frame.grid(row=4, column=0, pady=12)
-    download_btn = ttk.Button(btn_frame, text=translations[current_lang]["download"],
-        style="Rounded.TButton",
+    btn_frame = ctk.CTkFrame(root, fg_color="transparent")
+    btn_frame.pack(pady=12)
+
+    download_btn = ctk.CTkButton(btn_frame, text=translations[current_lang]["download"],
         command=lambda: start_download(url_text, codec_choice_var, res_choice_var,
-                                       log_widget, percent_label, speed_label, download_btn))
+                                       log_widget, percent_label, speed_label, download_btn, progress_bar, phase_label))
     download_btn.pack(side="left", padx=12)
-    open_btn = ttk.Button(btn_frame, text=translations[current_lang]["open_folder"],
-        style="Rounded.TButton", command=lambda: open_folder(DOWNLOAD_DIR))
+
+    open_btn = ctk.CTkButton(btn_frame, text=translations[current_lang]["open_folder"],
+        command=lambda: open_folder(DOWNLOAD_DIR))
     open_btn.pack(side="left", padx=12)
 
-    # === Progress Frame ===
-    prog_frame = make_labelframe(root, translations[current_lang]["progress"])
-    prog_frame.grid(row=5, column=0, sticky="nsew", padx=20, pady=12)
-    root.grid_rowconfigure(5, weight=1)
+    # === Progress & Log ===
+    prog_label = ctk.CTkLabel(root, text=translations[current_lang]["progress"])
+    prog_label.pack(anchor="w", padx=20, pady=(10,2))
 
-    title_frame = tk.Frame(prog_frame, bg="#2b2b2b")
-    title_frame.pack(fill="x", pady=(0,4))
-    percent_label = tk.Label(title_frame, text="", bg="#2b2b2b",
-                             font=("Segoe UI", 10, "bold"), fg=accent)
-    percent_label.pack(side="left")
-    speed_label = tk.Label(title_frame, text="", bg="#2b2b2b",
-                           font=("Segoe UI", 10, "italic"), fg="#ccc")
-    speed_label.pack(side="right", padx=5)
+    progress_bar = ctk.CTkProgressBar(root)
+    progress_bar.set(0.0)
+    progress_bar.pack(fill="x", padx=20, pady=(0,5))
 
-    log_widget = scrolledtext.ScrolledText(prog_frame, height=14, font=("Consolas", 9),
-                                           bd=0, relief="flat", bg="#1e1e1e", fg="white")
-    log_widget.pack(fill="both", expand=True, padx=10, pady=8)
-    log_widget.tag_config("green", foreground="#4caf50")
-    log_widget.tag_config("red", foreground="#f44336")
-    log_widget.tag_config("orange", foreground="#ff9800")
+    phase_label = ctk.CTkLabel(root, text="", font=("Segoe UI", 12, "bold"))
+    phase_label.pack(anchor="center", pady=(0,5))
 
-    def toggle_resolution(event=None):
-        if "Audio Only" in codec_choice_var.get():
-            res_frame.grid_remove()
-            res_dropdown.configure(state="disabled")
-        else:
-            res_frame.grid()
-            res_dropdown.configure(state="readonly")
+    percent_label = ctk.CTkLabel(root, text="")
+    percent_label.pack(anchor="w", padx=20)
 
-    codec_dropdown.bind("<<ComboboxSelected>>", toggle_resolution)
-    toggle_resolution()
+    speed_label = ctk.CTkLabel(root, text="")
+    speed_label.pack(anchor="e", padx=20)
 
-    # === Apply Language Function (no reset) ===
+    log_widget = ctk.CTkTextbox(root, height=200)
+    log_widget.pack(fill="both", expand=True, padx=20, pady=10)
+
+    # === Language Switch ===
     def apply_language():
         root.title(translations[current_lang]["title"])
-        url_frame.config(text=translations[current_lang]["url_label"])
-        codec_frame.config(text=translations[current_lang]["format_label"])
-        res_frame.config(text=translations[current_lang]["res_label"])
-        prog_frame.config(text=translations[current_lang]["progress"])
-        download_btn.config(text=translations[current_lang]["download"])
-        open_btn.config(text=translations[current_lang]["open_folder"])
-        lang_label.config(text=translations[current_lang]["lang_label"])
+        url_label.configure(text=translations[current_lang]["url_label"])
+        codec_label.configure(text=translations[current_lang]["format_label"])
+        res_label.configure(text=translations[current_lang]["res_label"])
+        prog_label.configure(text=translations[current_lang]["progress"])
+        download_btn.configure(text=translations[current_lang]["download"])
+        open_btn.configure(text=translations[current_lang]["open_folder"])
+        lang_label.configure(text=translations[current_lang]["lang_label"])
+        phase_label.configure(text="")
 
-    def switch_language(event=None):
+    def switch_language():
         global current_lang
         current_lang = lang_var.get()
         save_config({
@@ -362,9 +344,7 @@ def main():
             "language": current_lang,
             "geometry": root.geometry()
         })
-        apply_language()  # cukup update teks, tidak reset UI
-
-    lang_dropdown.bind("<<ComboboxSelected>>", switch_language)
+        apply_language()
 
     def on_close():
         geom = root.geometry()
