@@ -12,6 +12,14 @@ CONFIG_FILE = os.path.join(BASE_DIR, "config.json")
 DOWNLOAD_DIR = os.path.join(BASE_DIR, "download")
 os.makedirs(DOWNLOAD_DIR, exist_ok=True)
 
+def get_startupinfo():
+    """Suppress terminal window in Windows"""
+    if sys.platform == "win32":
+        si = subprocess.STARTUPINFO()
+        si.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+        return si
+    return None
+
 def load_config() -> Dict[str, Any]:
     if os.path.exists(CONFIG_FILE):
         try:
@@ -30,13 +38,18 @@ def save_config(config: Dict[str, Any]) -> None:
         print(f"Config save error: {e}")
 
 def open_folder(path: str) -> None:
-    """Cross-platform folder opener"""
+    """Cross-platform folder opener (no terminal popup)"""
     try:
         if platform.system() == "Windows":
             os.startfile(path)
         elif platform.system() == "Darwin":  # macOS
-            subprocess.Popen(["open", path])
+            subprocess.Popen(["open", path], startupinfo=get_startupinfo())
         else:  # Linux
-            subprocess.Popen(["xdg-open", path])
+            subprocess.Popen(
+                ["xdg-open", path],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                startupinfo=get_startupinfo()
+            )
     except Exception as e:
         print(f"Failed to open folder: {e}")

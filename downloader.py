@@ -1,9 +1,9 @@
-import re, threading, os, subprocess
+import re, threading, os, subprocess, sys
 from datetime import datetime
 from typing import List, Dict
 from tkinter import messagebox
 from yt_dlp import YoutubeDL
-from config import DOWNLOAD_DIR, FFMPEG_PATH
+from config import DOWNLOAD_DIR, FFMPEG_PATH, get_startupinfo
 
 # === English only ===
 translations: Dict[str, str] = {
@@ -34,7 +34,12 @@ def encoder_is_usable(ffmpeg_path: str, encoder: str) -> bool:
             "-c:v", encoder,
             "-f", "null", "-"
         ]
-        result = subprocess.run(test_cmd, capture_output=True, text=True)
+        result = subprocess.run(
+            test_cmd,
+            capture_output=True,
+            text=True,
+            startupinfo=get_startupinfo()
+        )
         return result.returncode == 0
     except Exception:
         return False

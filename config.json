@@ -1,5 +1,5 @@
 {
-    "codec": "H.264 (AMD AMF)",
-    "resolution": "144p",
-    "geometry": "600x750+155+103"
+    "codec": "H.264 (CPU libx264)",
+    "resolution": "1080p",
+    "geometry": "820x500+78+78"
 }
