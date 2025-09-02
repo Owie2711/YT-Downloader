@@ -22,11 +22,9 @@ Easily download videos or audio from YouTube in just a few clicks!
 
 ---
 
-## 📸 Screenshots
-<img width="562" height="782" alt="1" src="https://github.com/user-attachments/assets/92c4274c-4790-481e-9462-7c4338c64d2a" /> <img width="562" height="782" alt="2" src="https://github.com/user-attachments/assets/b94251c6-fcf7-4b6f-a32c-9a8e0635f920" />
-<img width="562" height="782" alt="3" src="https://github.com/user-attachments/assets/c7b893bf-a517-49af-b576-85fa22e47638" />
+## 📸 Screenshot
 
-
+<img width="889" height="716" alt="Screenshot 2025-09-02 130326" src="https://github.com/user-attachments/assets/5a6900e6-53f8-491d-9ef4-267e335b9718" />
 
 
 ---
