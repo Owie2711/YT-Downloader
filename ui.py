@@ -96,20 +96,30 @@ def main():
     root.title("YT-Downloader")
     
     # Validate and set geometry safely
-    geometry = config.get("geometry", "720x480")
+    geometry = config.get("geometry", "645x565+423+99")
     try:
         # Basic geometry validation
         if "x" in geometry and geometry.count("x") == 1:
             parts = geometry.split("x")
-            width, height = int(parts[0]), int(parts[1])
+            width = int(parts[0])
+            # Handle position part if exists
+            if "+" in parts[1]:
+                height_pos = parts[1].split("+")
+                height = int(height_pos[0])
+                x_pos = int(height_pos[1]) if len(height_pos) > 1 else 423
+                y_pos = int(height_pos[2]) if len(height_pos) > 2 else 99
+            else:
+                height = int(parts[1])
+                x_pos, y_pos = 423, 99
+            
             if 400 <= width <= 2000 and 300 <= height <= 1500:  # Reasonable bounds
                 root.geometry(geometry)
             else:
-                root.geometry("720x480")
+                root.geometry("645x565+423+99")
         else:
-            root.geometry("720x480")
+            root.geometry("645x565+423+99")
     except (ValueError, IndexError):
-        root.geometry("720x480")
+        root.geometry("645x565+423+99")
     
     root.configure(fg_color=BG_COLOR)
 
