@@ -8,62 +8,150 @@ from downloader import download_videos, cancel_download, translations, detect_av
 def main():
     config = load_config()
 
-    # === Modern Gradient Theme Colors ===
-    BG_COLOR = "#0D0D0D"           # Deep dark background
-    CARD_COLOR = "#1C1F2E"        # Card with blue tint
-    TEXT_COLOR = "#F5F5F5"        # Light text
-    BTN_PRIMARY = "#3F51B5"       # Indigo primary
-    BTN_PRIMARY_HOVER = "#303F9F"
-    BTN_ACCENT = "#E91E63"        # Pink accent
-    BTN_ACCENT_HOVER = "#AD1457"
+    # === Light Theme Colors ===
+    BG_COLOR = "#F9FAFB"          # Putih lembut
+    CARD_COLOR = "#FFFFFF"        # Putih murni (card utama)
+    TEXT_COLOR = "#111827"        # Hitam keabu-abuan
+    PRIMARY_COLOR = "#1D4ED8"     # Biru utama
+    SECONDARY_COLOR = "#E5E7EB"   # Abu untuk tombol open
+    BORDER_COLOR = "#D1D5DB"      # Abu border tipis
 
-    ctk.set_appearance_mode("dark")
+    ctk.set_appearance_mode("light")
 
     root = ctk.CTk()
-    root.title("🎬 YouTube Downloader")
-    root.geometry(config.get("geometry", "780x480"))
+    root.title("YT-Downloader")
+    root.geometry(config.get("geometry", "720x480"))
     root.configure(fg_color=BG_COLOR)
 
-    # === Main Container (Card Style) ===
-    container = ctk.CTkFrame(root, corner_radius=20, fg_color=CARD_COLOR)
-    container.pack(fill="both", expand=True, padx=25, pady=25)
+    # === Main Container ===
+    container = ctk.CTkFrame(root, corner_radius=16, fg_color=CARD_COLOR, border_width=0)
+    container.pack(fill="both", expand=True, padx=20, pady=20)
 
-    # === Left Panel: Format & Resolution ===
-    left_panel = ctk.CTkFrame(container, corner_radius=15, fg_color=CARD_COLOR)
-    left_panel.pack(side="left", fill="y", padx=(20, 10), pady=20)
+    # === Title ===
+    title_label = ctk.CTkLabel(container, text="YT-Downloader",
+                               font=("Arial", 20, "bold"), text_color=PRIMARY_COLOR)
+    title_label.pack(pady=(15, 10))
 
-    codec_label = ctk.CTkLabel(left_panel, text="Format", font=("Segoe UI", 14, "bold"), text_color=TEXT_COLOR)
-    codec_label.pack(anchor="w", padx=15, pady=(15, 5))
+    # === Top Input Section ===
+    input_frame = ctk.CTkFrame(container, fg_color="transparent")
+    input_frame.pack(fill="x", padx=25, pady=(5, 10))
+
+    url_text = ctk.CTkEntry(input_frame, placeholder_text="Paste YouTube Link Here",
+                            fg_color="white", text_color=TEXT_COLOR,
+                            border_color=BORDER_COLOR, border_width=1,
+                            height=40, corner_radius=12)
+    url_text.pack(side="left", fill="x", expand=True, padx=(0, 10))
+
+    def start_or_cancel():
+        if download_btn.cget("text") == "Cancel":
+            cancel_download()
+            return
+        urls = [u.strip() for u in url_text.get().splitlines() if u.strip()]
+        if not urls:
+            messagebox.showwarning(translations["warning"], translations["warn_url"])
+            return
+        log_widget.delete("1.0", "end")
+        log_widget.insert("end", translations["start_download"] + "\n")
+        progress_bar.set(0.0)
+        download_btn.configure(text="Cancel")
+        threading.Thread(target=download_videos,
+                         args=(urls, codec_choice_var.get(), res_choice_var.get(),
+                               log_widget, prog_label, speed_label, download_btn, progress_bar, phase_label),
+                         daemon=True).start()
+
+    download_btn = ctk.CTkButton(input_frame, text="Download", command=start_or_cancel,
+                                 height=40, width=110, corner_radius=12,
+                                 fg_color=PRIMARY_COLOR, hover_color="#2563EB", text_color="white")
+    download_btn.pack(side="left")
+
+    open_btn = ctk.CTkButton(input_frame, text="Open Folder", command=lambda: open_folder(DOWNLOAD_DIR),
+                             height=40, width=120, corner_radius=12,
+                             fg_color=SECONDARY_COLOR, hover_color="#D1D5DB", text_color=TEXT_COLOR)
+    open_btn.pack(side="left", padx=(10, 0))
+
+    # === Codec & Resolution ===
+    option_frame = ctk.CTkFrame(container, fg_color="transparent")
+    option_frame.pack(fill="x", padx=25, pady=(0, 15))
 
     available_codecs = detect_available_codecs(FFMPEG_PATH)
     codec_values = list(available_codecs.keys())
     codec_choice_var = ctk.StringVar(value=config.get("codec", codec_values[0]))
-    codec_dropdown = ctk.CTkComboBox(left_panel, variable=codec_choice_var, values=codec_values,
-                                     fg_color=BG_COLOR, text_color=TEXT_COLOR, button_color=BTN_PRIMARY,
-                                     dropdown_fg_color=CARD_COLOR, dropdown_text_color=TEXT_COLOR)
-    codec_dropdown.pack(fill="x", padx=15, pady=(0, 15))
 
-    res_label = ctk.CTkLabel(left_panel, text="Resolution", font=("Segoe UI", 14, "bold"), text_color=TEXT_COLOR)
-    res_label.pack(anchor="w", padx=15, pady=(0, 5))
+    codec_frame = ctk.CTkFrame(option_frame, fg_color="white", border_color=BORDER_COLOR,
+                               border_width=1, corner_radius=12)
+    codec_frame.pack(side="left", padx=(0, 20))
+
+    codec_dropdown = ctk.CTkOptionMenu(
+        codec_frame,
+        variable=codec_choice_var,
+        values=codec_values,
+        fg_color="white",
+        text_color=PRIMARY_COLOR,
+        button_color="white",
+        button_hover_color="white",
+        dropdown_fg_color="white",
+        dropdown_hover_color=PRIMARY_COLOR,
+        dropdown_text_color="black",
+        width=160,
+        height=34,
+        corner_radius=12
+    )
+    codec_dropdown.pack(fill="both", expand=True, padx=1, pady=1)
+    codec_dropdown._dropdown_menu.configure(activeforeground="white")
 
     res_choice_var = ctk.StringVar(value=config.get("resolution", "1080p"))
-    res_dropdown = ctk.CTkComboBox(left_panel, variable=res_choice_var, values=[
-        "144p", "240p", "360p", "480p", "720p", "1080p", "1440p (2K)", "2160p (4K)", "4320p (8K)"],
-        fg_color=BG_COLOR, text_color=TEXT_COLOR, button_color=BTN_PRIMARY,
-        dropdown_fg_color=CARD_COLOR, dropdown_text_color=TEXT_COLOR)
-    res_dropdown.pack(fill="x", padx=15, pady=(0, 15))
 
-    # === Right Panel: Input + Buttons + Progress ===
-    right_panel = ctk.CTkFrame(container, corner_radius=15, fg_color=CARD_COLOR)
-    right_panel.pack(side="left", fill="both", expand=True, padx=(10, 20), pady=20)
+    res_frame = ctk.CTkFrame(option_frame, fg_color="white", border_color=BORDER_COLOR,
+                             border_width=1, corner_radius=12)
+    res_frame.pack(side="left")
 
-    url_label = ctk.CTkLabel(right_panel, text="Enter Video Link Here", font=("Segoe UI", 14, "bold"), text_color=TEXT_COLOR)
-    url_label.pack(anchor="w", padx=15, pady=(15, 5))
+    res_dropdown = ctk.CTkOptionMenu(
+        res_frame,
+        variable=res_choice_var,
+        values=[
+            "144p", "240p", "360p", "480p", "720p", "1080p",
+            "1440p (2K)", "2160p (4K)", "4320p (8K)"
+        ],
+        fg_color="white",
+        text_color=PRIMARY_COLOR,
+        button_color="white",
+        button_hover_color="white",
+        dropdown_fg_color="white",
+        dropdown_hover_color=PRIMARY_COLOR,
+        dropdown_text_color=TEXT_COLOR,
+        width=140,
+        height=34,
+        corner_radius=12
+    )
+    res_dropdown.pack(fill="both", expand=True, padx=1, pady=1)
+    res_dropdown._dropdown_menu.configure(activeforeground="white")
 
-    url_text = ctk.CTkTextbox(right_panel, height=60, fg_color=BG_COLOR, text_color=TEXT_COLOR)
-    url_text.pack(fill="x", padx=15, pady=(0, 12))
+    # === Progress Section ===
+    prog_label = ctk.CTkLabel(container, text="Progress", font=("Arial", 12, "bold"), text_color=PRIMARY_COLOR)
+    prog_label.pack(anchor="w", padx=25, pady=(0, 2))
 
-    # === Add Right-Click Menu (Copy/Paste) ===
+    progress_bar = ctk.CTkProgressBar(container, fg_color=BORDER_COLOR, progress_color=PRIMARY_COLOR, height=15,
+                                      corner_radius=12)
+    progress_bar.set(0.0)
+    progress_bar.pack(fill="x", padx=25, pady=(0, 12))
+
+    phase_label = ctk.CTkLabel(container, text="", font=("Arial", 12, "bold"), text_color=PRIMARY_COLOR)
+    phase_label.pack(anchor="center", pady=(0, 5))
+
+    speed_label = ctk.CTkLabel(container, text="", font=("Arial", 11), text_color=TEXT_COLOR)
+    speed_label.pack(anchor="e", padx=25, pady=(0, 5))
+
+    # === Logs Section ===
+    log_label = ctk.CTkLabel(container, text="Logs", font=("Arial", 12, "bold"), text_color=PRIMARY_COLOR)
+    log_label.pack(anchor="w", padx=25, pady=(0, 2))
+
+    log_widget = ctk.CTkTextbox(container, height=140, fg_color="#F3F4F6", text_color=TEXT_COLOR,
+                                border_width=1, border_color=BORDER_COLOR, corner_radius=12)
+    log_widget.pack(fill="both", expand=True, padx=25, pady=(0, 20))
+    log_widget.tag_config("warning", foreground="orange")
+    log_widget.tag_config("error", foreground="red")
+
+    # === Context Menu (Copy/Paste) ===
     def paste_text():
         try:
             clip = root.clipboard_get()
@@ -79,7 +167,7 @@ def main():
         except Exception:
             pass
 
-    menu = Menu(url_text, tearoff=0, bg=CARD_COLOR, fg=TEXT_COLOR)
+    menu = Menu(url_text, tearoff=0, bg="white", fg=TEXT_COLOR)
     menu.add_command(label="Copy", command=copy_text)
     menu.add_command(label="Paste", command=paste_text)
 
@@ -87,56 +175,6 @@ def main():
         menu.tk_popup(event.x_root, event.y_root)
 
     url_text.bind("<Button-3>", show_context_menu)
-
-    # === Buttons ===
-    btn_frame = ctk.CTkFrame(right_panel, fg_color="transparent")
-    btn_frame.pack(fill="x", padx=15, pady=(0, 12))
-
-    def start_or_cancel():
-        if download_btn.cget("text") == "⏹️ Cancel":
-            cancel_download()
-            return
-        urls = [u.strip() for u in url_text.get("1.0", "end").splitlines() if u.strip()]
-        if not urls:
-            messagebox.showwarning(translations["warning"], translations["warn_url"])
-            return
-        log_widget.delete("1.0", "end")
-        log_widget.insert("end", translations["start_download"] + "\n")
-        progress_bar.set(0.0)
-        download_btn.configure(text="⏹️ Cancel")
-        threading.Thread(target=download_videos,
-                         args=(urls, codec_choice_var.get(), res_choice_var.get(),
-                               log_widget, prog_label, speed_label, download_btn, progress_bar, phase_label),
-                         daemon=True).start()
-
-    download_btn = ctk.CTkButton(btn_frame, text="Download", command=start_or_cancel, height=40, width=140,
-                                 fg_color=BTN_PRIMARY, hover_color=BTN_PRIMARY_HOVER, text_color="white",
-                                 corner_radius=10)
-    download_btn.pack(side="left", padx=(0, 10))
-
-    open_btn = ctk.CTkButton(btn_frame, text="Open Folder", command=lambda: open_folder(DOWNLOAD_DIR), height=40, width=140,
-                              fg_color=BTN_ACCENT, hover_color=BTN_ACCENT_HOVER, text_color="white",
-                              corner_radius=10)
-    open_btn.pack(side="left")
-
-    # === Progress Section ===
-    prog_label = ctk.CTkLabel(right_panel, text="Downloading:", font=("Segoe UI", 12), text_color=TEXT_COLOR)
-    prog_label.pack(anchor="w", padx=15, pady=(5, 2))
-
-    progress_bar = ctk.CTkProgressBar(right_panel, fg_color=BG_COLOR, progress_color=BTN_PRIMARY)
-    progress_bar.set(0.0)
-    progress_bar.pack(fill="x", padx=15, pady=(0, 8))
-
-    phase_label = ctk.CTkLabel(right_panel, text="", font=("Segoe UI", 12, "bold"), text_color=TEXT_COLOR)
-    phase_label.pack(anchor="center", pady=(0, 5))
-
-    speed_label = ctk.CTkLabel(right_panel, text="", font=("Segoe UI", 11), text_color=TEXT_COLOR)
-    speed_label.pack(anchor="e", padx=15, pady=(0, 5))
-
-    log_widget = ctk.CTkTextbox(right_panel, height=140, fg_color=BG_COLOR, text_color=TEXT_COLOR)
-    log_widget.pack(fill="both", expand=True, padx=15, pady=10)
-    log_widget.tag_config("warning", foreground="orange")
-    log_widget.tag_config("error", foreground="red")
 
     # === Save Config on Close ===
     def on_close():
